@@ -1,5 +1,7 @@
 ---
-output: html_document
+output:
+  html_document:
+    keep_md: yes
 ---
 # Reproducible Research: Peer Assessment 1
 This document describes the process and code that was followed to analyze activity data for a personal monitoring activity device. The data comes from [here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) and is two months of activity data from an anonymous individual collected during the months of October and November, 2012.
@@ -57,7 +59,7 @@ This adds the current date to the *column* but that should not affect the calcul
 To calculate the total number of steps taken per day, lets use the function **tapply** on the *steps* column in *actdata* applying the function **sum** for each date to create the object *sumsteps*:
 
 ```{r}
-sumsteps <- tapply(X = actdata$steps,INDEX = actdata$date,FUN = sum, na.rm=T)
+sumsteps <- tapply(X = actdata$steps,INDEX = actdata$date,FUN = sum, na.rm = T)
 head(sumsteps)
 ```
 But we do not want to include the days with no steps (because there were no data for those days); so lets exclude the zeroes from the *sumsteps* object:
@@ -71,7 +73,7 @@ range(sumsteps)
 
 This histogram shows the frequency distribution of the total number of steps taken per day 
 ```{r}
-hist(sumsteps,breaks=10,col="blue",xlab="Number of steps per day",main = "")
+hist(sumsteps, breaks=10, col="blue", xlab="Number of steps per day", main = "")
 ```
 
 The mean and median number of steps can be calculated easily:
@@ -85,7 +87,7 @@ median(sumsteps)
 To calculate the average daily activity pattern, we use again the **tapply** function on the *steps* column, averaging by *interval* to create the *meansteps* object:
 
 ```{r}
-meansteps <- tapply(actdata$steps,actdata$interval,mean,na.rm=T)
+meansteps <- tapply(actdata$steps, actdata$interval, mean, na.rm = T)
 head(meansteps)
 ```
 The maximum number of meansteps is:
@@ -103,7 +105,7 @@ timestamp <- ymd_hms(names(meansteps))
 
 
 ```{r}
-plot(timestamp,meansteps,t='l', xlab = "five-minute day interval", ylab = "mean number of steps per interval")
+plot(timestamp,meansteps, t = 'l', xlab = "five-minute day interval", ylab = "mean number of steps per interval")
 ```
 
 ## Imputing missing values
@@ -166,10 +168,10 @@ Lets compare the frequency distribution of the daily number of steps for both da
 
 ```{r fig.height=8,fig.align='center'}
 par(mfrow=c(2,1))
-hist(sumsteps,breaks=10,col="lightblue",xlab="Number of steps per day",main = "Original data set")
+hist(sumsteps, breaks = 10, col = "lightblue", xlab = "Number of steps per day", main = "Original data set")
 abline(v = mean(sumsteps), lty=1)
 
-hist(sumsteps.filled,breaks=10,col="lightblue",xlab="Number of steps per day",main = "Filled data set")
+hist(sumsteps.filled, breaks = 10, col = "lightblue", xlab = "Number of steps per day", main = "Filled data set")
 abline(v = mean(sumsteps.filled), lty=1)
 ```
 The mean and median total number of steps for the filled data set are `r mean(sumsteps.filled)` and `r median(sumsteps.filled)`; almost identical to the mean and median of the original data set (`r mean(sumsteps)` and `r median(sumsteps)` respectively).
@@ -183,7 +185,7 @@ To examine this question, I first create a new function that figures out whether
 dayType <- function(date){
         require(lubridate)
         dayn <- wday(date)
-        if(dayn==1 | dayn==7)
+        if(dayn == 1 | dayn == 7)
                 return("Weekend")
         else
                 return("Weekday")
@@ -199,13 +201,13 @@ actdata$dayType <- sapply(X = actdata$date, FUN = dayType)
 Then I used function **ddply** from package *plyr* to calculate the average daily activity by hour interval and day type (weekend or weekday) and store it in a new object called *actbydt* (activity by day type):
 
 ```{r}
-actbydt<-ddply(actdata,.(dayType,interval),summarize,meanAct=mean(steps,na.rm=T))
+actbydt <- ddply(actdata, .(dayType, interval), summarize, meanAct = mean(steps, na.rm=T))
 head(actbydt)
 ```
 Finally, I use **ggplot** to plot the results:
 
 ```{r fig.align='center'}
-plot <- ggplot(actbydt,aes(x=interval,y=meanAct)) + facet_grid(dayType~.) + geom_line() + scale_x_datetime(labels=date_format("%H:%M"))
+plot <- ggplot(actbydt, aes(x = interval, y = meanAct)) + facet_grid(dayType~.) + geom_line() + scale_x_datetime(labels = date_format("%H:%M"))
 plot <- plot + xlab("Five minute time interval") + ylab("Mean number of steps") 
 print(plot)
 ```
