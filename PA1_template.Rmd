@@ -1,5 +1,8 @@
+---
+output: html_document
+---
 # Reproducible Research: Peer Assessment 1
-This document describes the process and code that was followed to analyze activity data for a personal monitoring activity device. The data comes from [here] (https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) and is two months of activity data from an anonymous individual collected during the months of October and November, 2012.
+This document describes the process and code that was followed to analyze activity data for a personal monitoring activity device. The data comes from [here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) and is two months of activity data from an anonymous individual collected during the months of October and November, 2012.
 
 The questions that we are trying to answer here are:
 
@@ -9,18 +12,153 @@ The questions that we are trying to answer here are:
 
 ## Loading and preprocessing the data
 
+Lets first extract the data from the *activity.zip* file, load it, and store it in an abject called *actdata* (for activity data):
 
+```{r}
+unzip("activity.zip")
+actdata <- read.csv("activity.csv",h = TRUE)
+head(actdata)
+```
+
+Each row corresponds to a 5-minute interval of activity. There are three columns: *steps*,*date*, and *interval*. As described in the instructions for this exercise these correspond to:
+
+- *steps*: number of steps taking during the five minute interval
+- *date*: the date when the activity happened as yyyy-mm-dd
+- *interval*: identifies the 5-minute interval for the activity
+
+The *date* column is probably not in a date format as can be confirmed by applying the **class** function to it:
+
+```{r}
+class(actdata$date)
+```
+
+So, lets convert that column into a date format using the **ymd** function in the *lubridate* package and also convert the *interval* column into a factor:
+
+```{r}
+library(lubridate)
+actdata$date <- ymd(actdata$date)
+class(actdata$date)
+actdata$interval <- as.factor(actdata$interval)
+```
+
+Ok, so now we are ready to analyze these data.
 
 ## What is mean total number of steps taken per day?
 
+To calculate the total number of steps taken per day, lets use the function **tapply** on the *steps* column in *actdata* applying the function **sum** for each date to create the object *sumsteps*:
 
+```{r}
+sumsteps <- tapply(X = actdata$steps,INDEX = actdata$date,FUN = sum, na.rm=T)
+head(sumsteps)
+```
+But we do not want to include the days with no steps (because there were no data for those days); so lets exclude the zeroes from the *sumsteps* object:
+
+```{r}
+nonzeroIndx <- sumsteps > 0
+sumsteps <- sumsteps[nonzeroIndx]
+#verify we indeed have no zeroes
+range(sumsteps)
+```
+
+This histogram shows the frequency distribution of the total number of steps taken per day 
+```{r}
+hist(sumsteps,breaks=10,col="blue",xlab="Number of steps per day",main = "")
+```
+
+The mean and median number of steps can be calculated easily:
+
+```{r}
+mean(sumsteps)
+median(sumsteps)
+```
 
 ## What is the average daily activity pattern?
+To calculate the average daily activity pattern, we use again the **tapply** function on the *steps* column, averaging by *interval* to create the *meansteps* object:
 
+```{r}
+meansteps <- tapply(X = actdata$steps, INDEX = actdata$interval, FUN = mean, na.rm=T)
+head(meansteps)
+```
+The maximum number of meansteps is:
+```{r}
+max.meansteps <- max(meansteps)
+max.meansteps
+which(meansteps == max.meansteps)
+```
 
+which occurs at the 8:35 interval. Lets plot the activity pattern showing the max with the **abline** function:
+
+```{r}
+plot(x=names(meansteps), y = meansteps, t = 'l', xlab = "five-minute day interval", ylab = "mean number of steps per interval")
+abline(v = 835, lty = 2)
+```
 
 ## Imputing missing values
+There are some missing values in this data set, so it would be interesting to know what the effect of those missing values is on some of the results obtained previously. First lets calculate how many missing values there are:
 
+```{r}
+summary(actdata)
+```
+We can see here that  there are `r sum(is.na(actdata$steps))` missing values in the *steps* column.
 
+To fill these missing values I will use the average number of steps taken at that time interval. Fortunately these values were already calculated and are stored in the object *meansteps*. First, I create a small function that takes a row of activity data with a missing value in the *steps* column from *actdata* and fills in the missing value by matching the corresponding mean value of steps from *meansteps*. This function is called **fillSteps**:
+
+```{r}
+fillSteps <- function(datarow,meanobject=meansteps) {
+        interval <- datarow[3]
+        index <- which(names(meanobject) == as.character(interval))
+        as.numeric(meanobject[index])
+}        
+```
+**fillSteps** takes two arguments: *datarow*, which is a row of data coming from *actdata* that has a missing steps value, and *meanobject* which is an object that contains the mean number of steps for each five minute interval (in our case *meansteps*, so I make this the default). Lets test the function:
+
+```{r}
+actdata[1,] # first row is missing the number of steps
+fillSteps(actdata[1,])
+head(meansteps)
+```
+So the function works fine!
+
+Now, I will use this function to fill in all the missing values in the data set. But first, I duplicate the original data set so I can compare it to this new filled-in data set which I am going to call *actdata.filled*:
+
+```{r}
+actdata.filled <- actdata
+```
+
+Now, lets find were those missing values are:
+
+```{r}
+missvalues <- is.na(actdata.filled[, 1])
+```
+Using the function **apply** and the new function **fillSteps** I can replace all the missing values using the following code:
+
+```{r}
+actdata.filled[missvalues,1] <- apply(actdata.filled[missvalues,], 1, fillSteps)
+head(actdata.filled)
+```
+
+Lets verify there are no more missing values:
+
+```{r}
+sum(is.na(actdata.filled$steps))
+```
+Ok, so does filling the missing values has any effect on the frequency distribution of the total daily number of steps? First calculate the total daily number of steps for the new "filled" data set:
+
+```{r}
+sumsteps.filled <- tapply(actdata.filled$steps, actdata.filled$date, sum)
+head(sumsteps.filled)
+```
+
+Lets compare the frequency distribution of the daily number of steps for both data sets
+
+```{r fig.height=8,fig.align='center'}
+par(mfrow=c(2,1))
+hist(sumsteps,breaks=10,col="lightblue",xlab="Number of steps per day",main = "Original data set")
+abline(v = mean(sumsteps), lty=1)
+
+hist(sumsteps.filled,breaks=10,col="lightblue",xlab="Number of steps per day",main = "Filled data set")
+abline(v = mean(sumsteps.filled), lty=1)
+```
+The mean and median total number of steps for the filled data set are `r mean(sumsteps.filled)` and `r median(sumsteps.filled)`; almost identical to the mean and median of the original data set (`r mean(sumsteps)` and `r median(sumsteps)` respectively).
 
 ## Are there differences in activity patterns between weekdays and weekends?
