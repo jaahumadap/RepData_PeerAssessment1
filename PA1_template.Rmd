@@ -10,13 +10,22 @@ The questions that we are trying to answer here are:
 - What is the average daily activity pattern of this individual?
 - Are there any differences in the activity pattern between weekdays and weekends?
 
+The code in this document will use several R packages that are not part of the R *base* package; so lets get them loaded now (ensure you have these packages installed before attempting this exercise):
+
+```{r message=FALSE}
+library(lubridate)
+library(plyr)
+library(ggplot2)
+library(scales)
+```
+
 ## Loading and preprocessing the data
 
 Lets first extract the data from the *activity.zip* file, load it, and store it in an abject called *actdata* (for activity data):
 
 ```{r}
 unzip("activity.zip")
-actdata <- read.csv("activity.csv",h = TRUE)
+actdata <- read.csv("activity.csv", h = TRUE)
 head(actdata)
 ```
 
@@ -26,22 +35,22 @@ Each row corresponds to a 5-minute interval of activity. There are three columns
 - *date*: the date when the activity happened as yyyy-mm-dd
 - *interval*: identifies the 5-minute interval for the activity
 
-The *date* column is probably not in a date format as can be confirmed by applying the **class** function to it:
+The *date* and *interval* columns are probably not in a date/time format, so they need to be converted first. First convert the date column using the **ymd** function in the *lubridate* package:
 
 ```{r}
-class(actdata$date)
-```
-
-So, lets convert that column into a date format using the **ymd** function in the *lubridate* package and also convert the *interval* column into a factor:
-
-```{r}
-library(lubridate)
 actdata$date <- ymd(actdata$date)
 class(actdata$date)
-actdata$interval <- as.factor(actdata$interval)
+```
+Lets convert the interval variable to a time format of the type hh:mm. To do that,I first converted the *interval* into a 4-character text (e.g. '0000' instead of just '0'), and then converted that text into a hour minute format using *as.POSIXct*:
+
+```{r}
+#need to make this column 4 characters wide to convert to time
+actdata$interval <- sprintf("%04d",actdata$interval)
+actdata$interval <- as.POSIXct(strptime(actdata$interval,format="%H%M"))
+head(actdata)
 ```
 
-Ok, so now we are ready to analyze these data.
+This adds the current date to the *column* but that should not affect the calculations.Ok, so now we are ready to analyze these data.
 
 ## What is mean total number of steps taken per day?
 
@@ -76,7 +85,7 @@ median(sumsteps)
 To calculate the average daily activity pattern, we use again the **tapply** function on the *steps* column, averaging by *interval* to create the *meansteps* object:
 
 ```{r}
-meansteps <- tapply(X = actdata$steps, INDEX = actdata$interval, FUN = mean, na.rm=T)
+meansteps <- tapply(actdata$steps,actdata$interval,mean,na.rm=T)
 head(meansteps)
 ```
 The maximum number of meansteps is:
@@ -86,11 +95,15 @@ max.meansteps
 which(meansteps == max.meansteps)
 ```
 
-which occurs at the 8:35 interval. Lets plot the activity pattern showing the max with the **abline** function:
+which occurs at the 8:35 interval. Before plotting the data, I convert the names in the meansteps object to a date-time format using **ymd_hms**, to ensure the times are plotted in the x axis:
 
 ```{r}
-plot(x=names(meansteps), y = meansteps, t = 'l', xlab = "five-minute day interval", ylab = "mean number of steps per interval")
-abline(v = 835, lty = 2)
+timestamp <- ymd_hms(names(meansteps)) 
+```
+
+
+```{r}
+plot(timestamp,meansteps,t='l', xlab = "five-minute day interval", ylab = "mean number of steps per interval")
 ```
 
 ## Imputing missing values
@@ -106,9 +119,9 @@ To fill these missing values I will use the average number of steps taken at tha
 ```{r}
 fillSteps <- function(datarow,meanobject=meansteps) {
         interval <- datarow[3]
-        index <- which(names(meanobject) == as.character(interval))
-        as.numeric(meanobject[index])
-}        
+        index <- which(names(meanobject) == interval)
+        meanobject[index]
+}          
 ```
 **fillSteps** takes two arguments: *datarow*, which is a row of data coming from *actdata* that has a missing steps value, and *meanobject* which is an object that contains the mean number of steps for each five minute interval (in our case *meansteps*, so I make this the default). Lets test the function:
 
@@ -162,3 +175,38 @@ abline(v = mean(sumsteps.filled), lty=1)
 The mean and median total number of steps for the filled data set are `r mean(sumsteps.filled)` and `r median(sumsteps.filled)`; almost identical to the mean and median of the original data set (`r mean(sumsteps)` and `r median(sumsteps)` respectively).
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+To examine this question, I first create a new function that figures out whether a date falls in a weekend or weekday:
+
+```{r}
+# Function to figure out whether a date falls in a weekend or weekday
+dayType <- function(date){
+        require(lubridate)
+        dayn <- wday(date)
+        if(dayn==1 | dayn==7)
+                return("Weekend")
+        else
+                return("Weekday")
+}
+```
+
+I then use the **sapply** function to calculate this over the two dates and store the value in a new column called dayType:
+
+```{r}
+actdata$dayType <- sapply(X = actdata$date, FUN = dayType)
+```
+
+Then I used function **ddply** from package *plyr* to calculate the average daily activity by hour interval and day type (weekend or weekday) and store it in a new object called *actbydt* (activity by day type):
+
+```{r}
+actbydt<-ddply(actdata,.(dayType,interval),summarize,meanAct=mean(steps,na.rm=T))
+head(actbydt)
+```
+Finally, I use **ggplot** to plot the results:
+
+```{r fig.align='center'}
+plot <- ggplot(actbydt,aes(x=interval,y=meanAct)) + facet_grid(dayType~.) + geom_line() + scale_x_datetime(labels=date_format("%H:%M"))
+plot <- plot + xlab("Five minute time interval") + ylab("Mean number of steps") 
+print(plot)
+```
+There are some interesting differences in the activity of this individual between weekend and weekday. During the weekday, the individual takes more steps during the morning than the rest of the day, but during the weekend the number of steps seems more even and higer during throughout the day (with still a little peak during the morning).
